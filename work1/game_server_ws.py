@@ -1,85 +1,130 @@
+# Lokasi: dino-multiplayer/work1/game_server_ws.py
+
 import asyncio
 import websockets
 import json
 import logging
 
-# Konfigurasi logging dasar
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Konfigurasi logging untuk mempermudah debugging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# State untuk menyimpan data pemain yang terhubung
-PLAYERS = {}
+# Variabel global untuk menyimpan state game
+STATE = {
+    "players": {},
+    "game_status": "LOBBY"  # Status bisa: LOBBY, PLAYING, GAMEOVER
+}
 
-async def broadcast(message):
-    """Mengirim pesan ke semua klien yang terhubung."""
-    if PLAYERS:
-        json_message = json.dumps(message)
-        logging.info(f"Broadcasting: {json_message}")
-        # Buat daftar tugas untuk mengirim pesan ke semua pemain
-        tasks = [asyncio.create_task(player["ws"].send(json_message)) for player in PLAYERS.values()]
-        await asyncio.wait(tasks)
-
-async def check_and_start_game():
-    """Memeriksa apakah semua pemain siap dan memulai permainan."""
-    # Game dimulai jika ada 2 pemain dan keduanya sudah READY
-    if len(PLAYERS) == 2 and all(p['status'] == 'READY' for p in PLAYERS.values()):
-        await broadcast({"type": "START_GAME"})
-
-async def handler(websocket, path):
-    """Fungsi utama untuk menangani koneksi dan pesan dari setiap klien."""
-    client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-    
-    # Tolak koneksi jika server sudah penuh (2 pemain)
-    if len(PLAYERS) >= 2:
-        logging.warning(f"Connection rejected for {client_id}: Server is full.")
-        await websocket.send(json.dumps({"type": "ERROR", "message": "Server is full."}))
-        await websocket.close()
+async def broadcast_game_state():
+    """Mengirim state seluruh game ke semua pemain yang terhubung."""
+    if not STATE["players"]:
         return
 
-    logging.info(f"Player {client_id} connected.")
-    PLAYERS[client_id] = {"ws": websocket, "status": "CONNECTED"}
+    # Menyiapkan data yang akan dikirim
+    game_state_payload = {
+        "type": "GAME_STATE",
+        "players": {
+            pid: {
+                "dino": p.get("dino", {}),
+                "state": p.get("state", "CONNECTED")
+            }
+            for pid, p in STATE["players"].items()
+        }
+    }
     
-    # Kirim state saat ini ke semua pemain
-    await broadcast({
-        "type": "PLAYER_UPDATE",
-        "players": {pid: {"status": p["status"]} for pid, p in PLAYERS.items()}
-    })
+    # Mengirim pesan hanya ke koneksi yang masih aktif/terbuka.
+    active_connections = [p["ws"] for p in STATE["players"].values() if not p["ws"].closed]
+    if active_connections:
+        # Mengirim pesan ke semua klien secara bersamaan
+        await asyncio.gather(
+            *[ws.send(json.dumps(game_state_payload)) for ws in active_connections],
+            return_exceptions=True
+        )
+
+async def check_and_update_game_status():
+    """Memeriksa kondisi untuk memulai atau mengakhiri game."""
+    players_list = list(STATE["players"].values())
+    
+    if len(players_list) == 2 and all(p.get("state") == "READY" for p in players_list):
+        if STATE["game_status"] != "PLAYING":
+            logging.info("All players are ready! Starting game.")
+            STATE["game_status"] = "PLAYING"
+            for p in players_list:
+                p["state"] = "PLAYING"
+            await asyncio.gather(*[p["ws"].send(json.dumps({"type": "START_GAME"})) for p in players_list])
+
+    elif len(players_list) == 2 and all(p.get("state") == "GAMEOVER" for p in players_list):
+        if STATE["game_status"] != "GAMEOVER":
+            logging.info("All players are game over! Ending session.")
+            STATE["game_status"] = "GAMEOVER"
+            await asyncio.gather(*[p["ws"].send(json.dumps({"type": "SESSION_OVER"})) for p in players_list])
+
+async def handler(websocket):
+    """Fungsi utama yang menangani setiap koneksi dari pemain."""
+    if len(STATE["players"]) >= 2:
+        logging.warning("Connection rejected: Server is full.")
+        await websocket.close(1008, "Server is full")
+        return
+
+    client_id = str(websocket.id)
+    STATE["players"][client_id] = {"ws": websocket, "state": "CONNECTED"}
+    logging.info(f"Player {client_id} connected. Total players: {len(STATE['players'])}")
 
     try:
+        await websocket.send(json.dumps({"type": "ASSIGN_ID", "id": client_id}))
+        await broadcast_game_state()
+
         async for message in websocket:
-            data = json.loads(message)
-            logging.info(f"Received from {client_id}: {data}")
+            try:
+                data = json.loads(message)
+                msg_type = data.get("type")
 
-            if data['type'] == 'READY':
-                if client_id in PLAYERS:
-                    PLAYERS[client_id]['status'] = 'READY'
-                    await broadcast({
-                        "type": "PLAYER_UPDATE",
-                        "players": {pid: {"status": p["status"]} for pid, p in PLAYERS.items()}
-                    })
-                    await check_and_start_game()
-            
-            # Anda bisa menambahkan tipe pesan lain di sini, misalnya untuk skor
-            # if data['type'] == 'UPDATE_SCORE':
-            #     await broadcast({"type": "SCORE_UPDATE", "id": client_id, "score": data['score']})
+                if client_id not in STATE["players"]: break
+                player = STATE["players"][client_id]
 
+                if msg_type == "READY":
+                    player["state"] = "READY"
+                    logging.info(f"Player {client_id} is ready.")
+                    await broadcast_game_state()
+                    await check_and_update_game_status()
+                elif msg_type == "UPDATE_STATE":
+                    player["dino"] = data.get("dino", {})
+                elif msg_type == "GAME_OVER":
+                    player["state"] = "GAMEOVER"
+                    logging.info(f"Player {client_id} is game over.")
+                    await broadcast_game_state()
+                    await check_and_update_game_status()
+            except json.JSONDecodeError:
+                logging.warning("Received invalid JSON message.")
+            except Exception as e:
+                logging.error(f"Error processing message: {e}")
+    except websockets.exceptions.ConnectionClosed:
+        pass
     finally:
-        logging.info(f"Player {client_id} disconnected.")
-        if client_id in PLAYERS:
-            del PLAYERS[client_id]
-        # Umumkan bahwa seorang pemain telah keluar
-        await broadcast({
-            "type": "PLAYER_UPDATE",
-            "players": {pid: {"status": p["status"]} for pid, p in PLAYERS.items()}
-        })
+        if client_id in STATE["players"]:
+            logging.info(f"Player {client_id} disconnected.")
+            del STATE["players"][client_id]
+            if STATE["game_status"] != "LOBBY" and len(STATE["players"]) < 2:
+                logging.info("A player left, resetting game to lobby.")
+                STATE["game_status"] = "LOBBY"
+                for p in STATE["players"].values():
+                    p["state"] = "CONNECTED"
+            await broadcast_game_state()
+
+async def broadcast_loop():
+    """Loop di background untuk mengirim update secara periodik."""
+    while True:
+        await asyncio.sleep(1/30)
+        await broadcast_game_state()
 
 async def main():
-    # Jalankan server di semua interface (0.0.0.0) pada port 6666
+    """Fungsi utama untuk menjalankan server."""
+    asyncio.create_task(broadcast_loop())
     async with websockets.serve(handler, "0.0.0.0", 6666):
-        logging.info("WebSocket Game Server started on ws://0.0.0.0:6666")
-        await asyncio.Future()  # Run forever
+        logging.info("Game server started on ws://0.0.0.0:6666")
+        await asyncio.Future()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nServer is shutting down.")

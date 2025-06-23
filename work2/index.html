@@ -1,25 +1,746 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>T-Rex Runner Multiplayer</title>
-    <link rel="stylesheet" type="text/css" href="style.css">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Dinosaur Game - Multiplayer</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background: #f7f7f7; 
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            overflow: hidden; 
+        }
+        .game-container { 
+            background: white; 
+            border: 2px solid #ccc; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            position: relative; 
+            overflow: hidden; 
+        }
+        #gameCanvas { 
+            display: block; 
+            background: #f7f7f7; 
+        }
+        .overlay { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center; 
+            color: #535353; 
+            flex-direction: column; 
+            background: rgba(255,255,255,0.9); 
+            transition: opacity 0.3s; 
+        }
+        .overlay-hidden { 
+            opacity: 0; 
+            pointer-events: none; 
+        }
+        .button { 
+            background: #535353; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            margin-top: 10px; 
+        }
+        .button:hover { 
+            background: #333; 
+        }
+        .button:disabled { 
+            background: #999; 
+            cursor: not-allowed; 
+        }
+        .connection-info { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            font-size: 12px; 
+            background: rgba(0,0,0,0.7); 
+            color: white; 
+            padding: 5px 10px; 
+            border-radius: 4px; 
+        }
+        .player-info { 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            font-size: 12px; 
+            background: rgba(0,0,0,0.7); 
+            color: white; 
+            padding: 5px 10px; 
+            border-radius: 4px; 
+        }
+        .config-panel { 
+            padding: 15px; 
+            background: #333; 
+            color: white; 
+            text-align: center; 
+            width: 100%; 
+            max-width: 804px; 
+            box-sizing: border-box; 
+            margin-bottom: 10px; 
+            border-radius: 8px;
+        }
+        .config-panel input { 
+            width: 300px; 
+            padding: 8px; 
+            margin-right: 10px; 
+            border-radius: 4px; 
+            border: 1px solid #ccc; 
+        }
+        .score-display {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+        }
+        .player-score {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+        }
+        .player-color {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #535353;
+            font-size: 12px;
+            background: rgba(255,255,255,0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .game-over-banner {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            display: none;
+            z-index: 10;
+        }
+        .result-banner {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            display: none;
+            z-index: 10;
+        }
+        .win-banner {
+            background: rgba(46, 204, 113, 0.8);
+            color: white;
+        }
+        .lose-banner {
+            background: rgba(231, 76, 60, 0.8);
+            color: white;
+        }
+        .draw-banner {
+            background: rgba(241, 196, 15, 0.8);
+            color: white;
+        }
+    </style>
 </head>
 <body>
-    <div id="multiplayer-status">
-        <h3>Multiplayer Dino</h3>
-        <p id="connection-status">Connecting to server...</p>
-        <div id="players-list">
-            </div>
-        <button id="ready-button">I'm Ready!</button>
+
+    <div class="config-panel">
+        <label for="serverUrl">Kode room</label>
+        <input type="text" id="serverUrl" placeholder="contoh: 50001">
+        <button class="button" onclick="connectToServer()" id="connectBtn">Connect</button>
     </div>
 
-    <div class="main-container">
-        <div class="runner-container">
-            <canvas id="runner-canvas" class="runner-canvas" width="600" height="150"></canvas>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="800" height="200"></canvas>
+        
+        <!-- Banner untuk game over dan hasil permainan -->
+        <div id="gameOverBanner" class="game-over-banner">Game Over! Skor: <span id="playerScore">0</span></div>
+        <div id="winBanner" class="result-banner win-banner">KAMU MENANG! 🏆</div>
+        <div id="loseBanner" class="result-banner lose-banner">KAMU KALAH 😢</div>
+        <div id="drawBanner" class="result-banner draw-banner">SERI! 🤝</div>
+        
+        <div class="connection-info" id="connectionInfo">Status: Disconnected</div>
+        <div class="player-info" id="playerInfo">Players: 0/2</div>
+        <div class="score-display" id="scoreDisplay"></div>
+        
+        <div id="lobbyScreen" class="overlay">
+            <h2 id="lobbyTitle">🦕 Multiplayer Dino Game</h2>
+            <p id="lobbyStatus">Masukkan URL server di atas dan klik Connect.</p>
+            <button id="readyButton" class="button" disabled>Ready to Play</button>
+        </div>
+        
+        <div id="gameOverScreen" class="overlay overlay-hidden">
+            <h2>🏁 Sesi Selesai!</h2>
+            <p>Semua pemain telah game over.</p>
+            <button class="button" onclick="window.location.reload()">Main Lagi</button>
+        </div>
+        
+        <div class="controls">
+            SPACE: Jump | ↓: Duck
         </div>
     </div>
 
-    <script src="script.js"></script> 
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const lobbyScreen = document.getElementById('lobbyScreen');
+        const lobbyStatus = document.getElementById('lobbyStatus');
+        const readyButton = document.getElementById('readyButton');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const connectionInfo = document.getElementById('connectionInfo');
+        const playerInfo = document.getElementById('playerInfo');
+        const serverUrlInput = document.getElementById('serverUrl');
+        const connectBtn = document.getElementById('connectBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const lobbyTitle = document.getElementById('lobbyTitle');
+        const gameOverBanner = document.getElementById('gameOverBanner');
+        const playerScoreSpan = document.getElementById('playerScore');
+        const winBanner = document.getElementById('winBanner');
+        const loseBanner = document.getElementById('loseBanner');
+        const drawBanner = document.getElementById('drawBanner');
+
+        let ws = null;
+        let myId = null;
+        let players = {};
+        let gameStarted = false;
+        let myState = 'CONNECTED';
+
+        let localDino = { 
+            x: 50, 
+            y: 130, 
+            width: 40, 
+            height: 50, 
+            velY: 0, 
+            jumping: false, 
+            ducking: false,
+            color: '#e60023'
+        };
+        
+        let obstacles = [];
+        let clouds = [];
+        const groundY = 180;
+        let gameSpeed = 2;
+        let score = 0;
+        let obstacleTimer = 0;
+        let cloudTimer = 0;
+        let groundLines = [];
+        let playerScores = {};
+        let gameOverShown = false;
+        let gameResultShown = false;
+        
+        // Initialize ground lines
+        for (let i = 0; i < canvas.width + 20; i += 20) {
+            groundLines.push(i);
+        }
+        
+        // Initialize clouds
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Math.random() * canvas.width,
+                y: 20 + Math.random() * 50
+            });
+        }
+
+        function connectToServer() {
+            const serverInput = serverUrlInput.value.trim();
+            if (!serverInput) {
+                alert('Silakan masukkan port atau URL WebSocket server.');
+                return;
+            }
+
+            if (ws) ws.close();
+
+            let finalUrl = serverInput;
+
+            // Jika input hanya angka (anggap sebagai port)
+            if (/^\d+$/.test(finalUrl)) {
+                const defaultSubdomain = '2z967vzv';
+                const domain = '.asse.devtunnels.ms';
+                finalUrl = `${defaultSubdomain}-${finalUrl}${domain}`;
+            }
+
+            // Tambahkan protokol jika belum ada
+            if (!finalUrl.startsWith('ws://') && !finalUrl.startsWith('wss://')) {
+                if (
+                    finalUrl.includes('.devtunnels.ms') ||
+                    finalUrl.includes('.app.github.dev') ||
+                    finalUrl.includes('.gitpod.io')
+                ) {
+                    finalUrl = 'wss://' + finalUrl;
+                } else {
+                    finalUrl = 'ws://' + finalUrl;
+                }
+            }
+
+            console.log('Connecting to:', finalUrl);
+            connectionInfo.textContent = 'Status: Connecting...';
+            connectBtn.disabled = true;
+            serverUrlInput.disabled = true;
+
+            ws = new WebSocket(finalUrl);
+
+            ws.onopen = () => {
+                connectionInfo.textContent = 'Status: Connected';
+                lobbyStatus.textContent = 'Terhubung! Menunggu ID dari server...';
+                connectBtn.textContent = 'Reconnect';
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleServerMessage(data);
+            };
+
+            ws.onclose = () => {
+                connectionInfo.textContent = `Status: Disconnected`;
+                lobbyStatus.textContent = "Koneksi terputus. Coba lagi.";
+                readyButton.disabled = true;
+                connectBtn.disabled = false;
+                serverUrlInput.disabled = false;
+                myId = null; players = {}; gameStarted = false;
+                lobbyScreen.classList.remove('overlay-hidden');
+                gameOverScreen.classList.add('overlay-hidden');
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                alert('Gagal terhubung. Pastikan URL atau port benar dan server berjalan.');
+            };
+        }
+
+        function handleServerMessage(data) {
+            if (data.type === 'ASSIGN_ID') {
+                myId = data.id;
+                console.log('My ID assigned by server:', myId);
+                lobbyStatus.textContent = 'Terhubung! Klik "Ready" jika sudah siap.';
+                readyButton.disabled = false;
+            } else if (data.type === 'GAME_STATE') {
+                players = data.players;
+                playerInfo.textContent = `Players: ${Object.keys(players).length}/2`;
+                if(myId && players[myId] && players[myId].state === 'READY'){
+                    readyButton.disabled = true;
+                    lobbyStatus.textContent = 'Ready! Menunggu pemain lain...';
+                }
+                
+                // Update player scores
+                for (const pid in players) {
+                    if (players[pid].score !== undefined) {
+                        playerScores[pid] = players[pid].score;
+                    }
+                }
+                updateScoreDisplay();
+            } else if (data.type === 'START_GAME') {
+                startMultiplayerGame();
+            } else if (data.type === 'SESSION_OVER') {
+                endGameSession();
+            }
+        }
+        
+        function updateScoreDisplay() {
+            scoreDisplay.innerHTML = '';
+            
+            for (const pid in players) {
+                const player = players[pid];
+                const scoreElement = document.createElement('div');
+                scoreElement.className = 'player-score';
+                
+                const colorBox = document.createElement('span');
+                colorBox.className = 'player-color';
+                colorBox.style.backgroundColor = pid === myId ? '#e60023' : '#535353';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = pid === myId ? 'Anda' : `Pemain ${pid.substring(0, 3)}`;
+                
+                const scoreSpan = document.createElement('span');
+                scoreSpan.textContent = String(playerScores[pid] || 0).padStart(5, '0');
+                
+                scoreElement.appendChild(colorBox);
+                scoreElement.appendChild(nameSpan);
+                scoreElement.appendChild(scoreSpan);
+                scoreDisplay.appendChild(scoreElement);
+            }
+        }
+        
+        readyButton.onclick = () => {
+            if (ws && myId) {
+                ws.send(JSON.stringify({ type: 'READY' }));
+                myState = 'READY';
+                readyButton.disabled = true;
+            }
+        };
+
+        function startMultiplayerGame() {
+            gameStarted = true; 
+            myState = 'PLAYING';
+            obstacles = []; 
+            score = 0; 
+            obstacleTimer = 0;
+            cloudTimer = 0;
+            playerScores = {};
+            gameOverShown = false;
+            gameResultShown = false;
+            
+            // Hide banners
+            gameOverBanner.style.display = 'none';
+            winBanner.style.display = 'none';
+            loseBanner.style.display = 'none';
+            drawBanner.style.display = 'none';
+            
+            localDino.y = 130; 
+            localDino.jumping = false; 
+            localDino.ducking = false; 
+            localDino.velY = 0;
+            
+            lobbyScreen.classList.add('overlay-hidden');
+            gameOverScreen.classList.add('overlay-hidden');
+            console.log('Game started!');
+        }
+
+        function endGameSession() {
+            gameStarted = false; 
+            myState = 'SESSION_OVER';
+            gameOverScreen.classList.remove('overlay-hidden');
+            
+            // Tampilkan hasil akhir permainan
+            showGameResult();
+        }
+        
+        function showGameOver() {
+            if (!gameOverShown) {
+                gameOverShown = true;
+                playerScoreSpan.textContent = playerScores[myId] || 0;
+                gameOverBanner.style.display = 'block';
+                
+                // Sembunyikan setelah beberapa detik
+                setTimeout(() => {
+                    gameOverBanner.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        function showGameResult() {
+            if (!gameResultShown) {
+                gameResultShown = true;
+                
+                // Cari ID pemain lain
+                let otherPlayerId = null;
+                for (const pid in players) {
+                    if (pid !== myId) {
+                        otherPlayerId = pid;
+                        break;
+                    }
+                }
+                
+                if (otherPlayerId) {
+                    const myScore = playerScores[myId] || 0;
+                    const otherScore = playerScores[otherPlayerId] || 0;
+                    
+                    if (myScore > otherScore) {
+                        winBanner.style.display = 'block';
+                    } else if (myScore < otherScore) {
+                        loseBanner.style.display = 'block';
+                    } else {
+                        drawBanner.style.display = 'block';
+                    }
+                }
+            }
+        }
+
+        function drawDino(dinoData, isMe = false) {
+            if (!dinoData) return;
+            
+            const color = isMe ? '#e60023' : '#535353';
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 1.0;
+
+            const playerState = isMe ? myState : (players[dinoData.id]?.state || 'PLAYING');
+            if (playerState === 'GAMEOVER') {
+                ctx.globalAlpha = 0.4;
+            }
+            
+            const x = dinoData.x, y = dinoData.y, width = dinoData.width, height = dinoData.height;
+
+            if (dinoData.ducking) {
+                // Draw ducking dino
+                ctx.fillRect(x, y + 20, width, height - 20);
+                // Eyes
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x + 25, y + 25, 8, 8);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(x + 27, y + 27, 4, 4);
+            } else {
+                // Draw normal dino
+                ctx.fillRect(x, y, width, height);
+                // Eyes
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x + 25, y + 8, 8, 8);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(x + 27, y + 10, 4, 4);
+                
+                // Legs (simple animation)
+                ctx.fillStyle = color;
+                const legOffset = Math.floor(Date.now() / 100) % 2 ? 2 : -2;
+                ctx.fillRect(x + 5, y + 45, 8, 8);
+                ctx.fillRect(x + 25 + legOffset, y + 45, 8, 8);
+            }
+
+            ctx.globalAlpha = 1.0;
+        }
+        
+        function drawObstacles() {
+            ctx.fillStyle = '#535353';
+            obstacles.forEach(obstacle => {
+                if (obstacle.type === 'cactus') {
+                    // Draw cactus with details
+                    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    // Add cactus arms
+                    ctx.fillRect(obstacle.x + 5, obstacle.y - 10, 8, 15);
+                } else if (obstacle.type === 'bird') {
+                    // Draw bird with wing animation
+                    const wingFlap = Math.floor(Date.now() / 200) % 2;
+                    ctx.fillRect(obstacle.x, obstacle.y + (wingFlap ? 0 : 5), obstacle.width, 10);
+                    ctx.fillRect(obstacle.x + 5, obstacle.y, 15, 8);
+                }
+            });
+        }
+        
+        function drawClouds() {
+            ctx.fillStyle = '#c4c4c4';
+            clouds.forEach(cloud => {
+                // Draw simple cloud shapes
+                ctx.fillRect(cloud.x, cloud.y, 30, 15);
+                ctx.fillRect(cloud.x - 5, cloud.y + 5, 20, 15);
+                ctx.fillRect(cloud.x + 15, cloud.y + 5, 20, 15);
+            });
+        }
+        
+        function drawGround() {
+            // Main ground line
+            ctx.strokeStyle = '#535353';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+            
+            // Ground texture
+            ctx.strokeStyle = '#535353';
+            ctx.lineWidth = 1;
+            groundLines.forEach(x => {
+                if (x > -20 && x < canvas.width + 20) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, groundY + 2);
+                    ctx.lineTo(x + 10, groundY + 2);
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        function updateClouds() {
+            // Move clouds
+            clouds.forEach(cloud => {
+                cloud.x -= gameSpeed * 0.3; // Clouds move slower
+            });
+
+            // Remove off-screen clouds
+            clouds = clouds.filter(cloud => cloud.x > -50);
+
+            // Add new clouds
+            cloudTimer++;
+            if (cloudTimer > 100 + Math.random() * 200) {
+                clouds.push({
+                    x: canvas.width,
+                    y: 20 + Math.random() * 50
+                });
+                cloudTimer = 0;
+            }
+        }
+        
+        function updateGround() {
+            // Move ground lines
+            groundLines = groundLines.map(x => x - gameSpeed);
+            
+            // Add new ground lines
+            while (groundLines[groundLines.length - 1] < canvas.width + 20) {
+                groundLines.push(groundLines[groundLines.length - 1] + 20);
+            }
+            
+            // Remove off-screen ground lines
+            groundLines = groundLines.filter(x => x > -20);
+        }
+        
+        function updateObstacles() {
+            // Move obstacles
+            obstacles.forEach(obstacle => {
+                obstacle.x -= gameSpeed;
+            });
+
+            // Remove off-screen obstacles
+            obstacles = obstacles.filter(obstacle => obstacle.x > -obstacle.width);
+
+            // Add new obstacles
+            obstacleTimer++;
+            if (obstacleTimer > 60 + Math.random() * 60) {
+                const type = Math.random() < 0.7 ? 'cactus' : 'bird';
+                const obstacle = {
+                    x: canvas.width,
+                    type: type,
+                    width: type === 'cactus' ? 20 : 25,
+                    height: type === 'cactus' ? 40 : 15
+                };
+                
+                if (type === 'cactus') {
+                    obstacle.y = groundY - obstacle.height;
+                } else {
+                    obstacle.y = groundY - 80 - Math.random() * 30; // Bird flies at different heights
+                }
+                
+                obstacles.push(obstacle);
+                obstacleTimer = 0;
+            }
+        }
+        
+        function drawAllPlayers() {
+            for (const pid in players) {
+                const isMe = (pid === myId);
+                const dinoToDraw = isMe ? localDino : players[pid].dino;
+                drawDino(dinoToDraw, isMe);
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw game elements
+            drawClouds();
+            drawGround();
+            
+            if (gameStarted) {
+                if (myState === 'PLAYING') {
+                    // Update local dino
+                    if (localDino.jumping) {
+                        localDino.velY += 0.5; 
+                        localDino.y += localDino.velY;
+                        if (localDino.y >= 130) { 
+                            localDino.y = 130; 
+                            localDino.jumping = false; 
+                            localDino.velY = 0; 
+                        }
+                    }
+
+                    // Update game elements
+                    updateClouds();
+                    updateGround();
+                    updateObstacles();
+                    
+                    // Update score
+                    score++;
+                    playerScores[myId] = Math.floor(score / 10);
+                    updateScoreDisplay();
+                    
+                    // Send score to server
+                    if (ws && myId) {
+                        ws.send(JSON.stringify({ 
+                            type: 'UPDATE_SCORE', 
+                            score: playerScores[myId] 
+                        }));
+                    }
+
+                    // Check collisions
+                    const d = localDino;
+                    for (let o of obstacles) {
+                        if (d.x < o.x + o.width && 
+                            d.x + d.width > o.x && 
+                            d.y < o.y + o.height && 
+                            d.y + d.height > o.y) {
+                            myState = 'GAMEOVER';
+                            if (ws) ws.send(JSON.stringify({ type: 'GAME_OVER' }));
+                            showGameOver();
+                            break;
+                        }
+                    }
+                }
+                
+                // Draw obstacles
+                drawObstacles();
+            }
+            
+            // Draw players
+            drawAllPlayers();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        setInterval(() => {
+            if (ws && myId && gameStarted) {
+                ws.send(JSON.stringify({ 
+                    type: 'UPDATE_STATE', 
+                    dino: localDino,
+                    state: myState
+                }));
+            }
+        }, 1000/30);
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted || myState !== 'PLAYING') return;
+            if ((e.code === 'Space' || e.code === 'ArrowUp') && !localDino.jumping) {
+                e.preventDefault(); 
+                localDino.jumping = true; 
+                localDino.velY = -15; 
+                localDino.ducking = false;
+            } else if (e.code === 'ArrowDown' && !localDino.jumping) {
+                e.preventDefault(); 
+                localDino.ducking = true;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => { 
+            if (e.code === 'ArrowDown') { 
+                localDino.ducking = false; 
+            }
+        });
+        
+        serverUrlInput.addEventListener('keypress', (e) => { 
+            if (e.key === 'Enter') connectToServer(); 
+        });
+
+        gameLoop();
+    </script>
 </body>
 </html>
