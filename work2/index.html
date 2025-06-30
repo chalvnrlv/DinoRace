@@ -139,7 +139,7 @@
         }
         .game-over-banner {
             position: absolute;
-            top: 50px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0,0,0,0.7);
@@ -153,7 +153,7 @@
         }
         .result-banner {
             position: absolute;
-            top: 80px;
+            top: 60px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0,0,0,0.7);
@@ -177,10 +177,50 @@
             background: rgba(241, 196, 15, 0.8);
             color: white;
         }
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            justify-content: space-around;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .mobile-button {
+            padding: 15px 25px;
+            font-size: 16px;
+            background: rgba(83,83,83,0.8);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            min-width: 120px;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        .mobile-button:active {
+            background: #333;
+        }
+        @media (max-width: 600px) {
+            .mobile-controls {
+                display: flex;
+            }
+            .controls {
+                display: none;
+            }
+            .game-container {
+                transform: scale(0.9);
+            }
+            .config-panel {
+                padding: 10px;
+            }
+            .config-panel input {
+                width: 200px;
+            }
+        }
     </style>
 </head>
 <body>
-
     <div class="config-panel">
         <label for="serverUrl">Kode room</label>
         <input type="text" id="serverUrl" placeholder="contoh: 50001">
@@ -215,6 +255,12 @@
         <div class="controls">
             SPACE: Jump | ↓: Duck
         </div>
+        
+        <!-- Kontrol untuk mobile -->
+        <div class="mobile-controls">
+            <button id="jumpButton" class="mobile-button">⬆️ JUMP</button>
+            <button id="duckButton" class="mobile-button">⬇️ DUCK</button>
+        </div>
     </div>
 
     <script>
@@ -235,6 +281,8 @@
         const winBanner = document.getElementById('winBanner');
         const loseBanner = document.getElementById('loseBanner');
         const drawBanner = document.getElementById('drawBanner');
+        const jumpButton = document.getElementById('jumpButton');
+        const duckButton = document.getElementById('duckButton');
 
         let ws = null;
         let myId = null;
@@ -438,7 +486,7 @@
             gameOverScreen.classList.remove('overlay-hidden');
             
             // Tampilkan hasil akhir permainan
-            showGameResult();
+            setTimeout(showGameResult, 1000);
         }
         
         function showGameOver() {
@@ -446,11 +494,6 @@
                 gameOverShown = true;
                 playerScoreSpan.textContent = playerScores[myId] || 0;
                 gameOverBanner.style.display = 'block';
-                
-                // Sembunyikan setelah beberapa detik
-                setTimeout(() => {
-                    gameOverBanner.style.display = 'none';
-                }, 3000);
             }
         }
         
@@ -458,26 +501,22 @@
             if (!gameResultShown) {
                 gameResultShown = true;
                 
-                // Cari ID pemain lain
-                let otherPlayerId = null;
-                for (const pid in players) {
-                    if (pid !== myId) {
-                        otherPlayerId = pid;
-                        break;
-                    }
-                }
+                // Cari semua pemain yang berpartisipasi
+                const playerIds = Object.keys(players);
+                const scores = playerIds.map(id => playerScores[id] || 0);
+                const maxScore = Math.max(...scores);
                 
-                if (otherPlayerId) {
-                    const myScore = playerScores[myId] || 0;
-                    const otherScore = playerScores[otherPlayerId] || 0;
-                    
-                    if (myScore > otherScore) {
-                        winBanner.style.display = 'block';
-                    } else if (myScore < otherScore) {
-                        loseBanner.style.display = 'block';
-                    } else {
-                        drawBanner.style.display = 'block';
-                    }
+                // Hitung jumlah pemain dengan skor tertinggi
+                const winners = playerIds.filter(id => playerScores[id] === maxScore);
+                const isDraw = winners.length > 1;
+                const iAmWinner = winners.includes(myId);
+
+                if (isDraw) {
+                    drawBanner.style.display = 'block';
+                } else if (iAmWinner) {
+                    winBanner.style.display = 'block';
+                } else {
+                    loseBanner.style.display = 'block';
                 }
             }
         }
@@ -738,6 +777,35 @@
         
         serverUrlInput.addEventListener('keypress', (e) => { 
             if (e.key === 'Enter') connectToServer(); 
+        });
+
+        // Mobile controls
+        jumpButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameStarted && myState === 'PLAYING' && !localDino.jumping) {
+                localDino.jumping = true; 
+                localDino.velY = -15; 
+                localDino.ducking = false;
+            }
+        });
+
+        duckButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameStarted && myState === 'PLAYING' && !localDino.jumping) {
+                localDino.ducking = true;
+            }
+        });
+
+        duckButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            localDino.ducking = false;
+        });
+
+        // Prevent scrolling on mobile when touching buttons
+        document.querySelectorAll('.mobile-button').forEach(button => {
+            button.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+            });
         });
 
         gameLoop();
