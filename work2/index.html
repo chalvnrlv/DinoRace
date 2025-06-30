@@ -392,33 +392,48 @@
             };
         }
 
-        function handleServerMessage(data) {
+            function handleServerMessage(data) {
             if (data.type === 'ASSIGN_ID') {
                 myId = data.id;
                 console.log('My ID assigned by server:', myId);
                 lobbyStatus.textContent = 'Terhubung! Klik "Ready" jika sudah siap.';
                 readyButton.disabled = false;
+
             } else if (data.type === 'GAME_STATE') {
                 players = data.players;
                 playerInfo.textContent = `Players: ${Object.keys(players).length}/2`;
-                if(myId && players[myId] && players[myId].state === 'READY'){
+
+                if (myId && players[myId] && players[myId].state === 'READY') {
                     readyButton.disabled = true;
                     lobbyStatus.textContent = 'Ready! Menunggu pemain lain...';
                 }
-                
-                // Update player scores
+
+                // Update skor
                 for (const pid in players) {
                     if (players[pid].score !== undefined) {
                         playerScores[pid] = players[pid].score;
                     }
                 }
                 updateScoreDisplay();
+
             } else if (data.type === 'START_GAME') {
                 startMultiplayerGame();
+
             } else if (data.type === 'SESSION_OVER') {
                 endGameSession();
+
+            } else if (data.type === 'WINNER_ANNOUNCEMENT') {
+                const result = data.result;
+                if (result === 'WIN') {
+                    winBanner.style.display = 'block';
+                } else if (result === 'LOSE') {
+                    loseBanner.style.display = 'block';
+                } else if (result === 'DRAW') {
+                    drawBanner.style.display = 'block';
+                }
             }
         }
+
         
         function updateScoreDisplay() {
             scoreDisplay.innerHTML = '';
